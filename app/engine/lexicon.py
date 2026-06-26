@@ -79,6 +79,14 @@ def normalize(text: str) -> str:
     """Lowercase + collapse whitespace. Bangla digits → ASCII for amount parsing."""
     if not text:
         return ""
+    # Neutralize prompt injection (AC-11)
+    text = re.sub(
+        r"ignore\s+(all\s+)?(previous\s+)?instructions\s*(and\s+\w+\s+with\s*['\"].*?['\"])?",
+        "",
+        text,
+        flags=re.IGNORECASE
+    )
+    text = re.sub(r"ignore\s+instructions", "", text, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", text.translate(_BN_DIGITS).lower()).strip()
 
 

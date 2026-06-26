@@ -42,19 +42,24 @@ def classify(complaint: str, match: MatchResult, history, user_type: str | None)
         return CaseType.WRONG_TRANSFER
 
     # 4. Payment failed / deducted but failed.
-    if lexicon.contains_any(norm, lexicon.FAILED_CUES) or status in {"failed", "pending"}:
-        return CaseType.PAYMENT_FAILED
+    is_agent = lexicon.contains_any(norm, lexicon.CASH_IN_CUES) or (
+        lexicon.contains_any(norm, lexicon.AGENT_CUES) and (
+            user_type == "agent" or "cash" in norm or "balance" in norm or "deposit" in norm
+        )
+    )
+    is_merchant = lexicon.contains_any(norm, lexicon.SETTLEMENT_CUES) or (
+        lexicon.contains_any(norm, lexicon.MERCHANT_CUES) and user_type == "merchant"
+    )
+    if not is_agent and not is_merchant:
+        if lexicon.contains_any(norm, lexicon.FAILED_CUES) or status in {"failed", "pending"}:
+            return CaseType.PAYMENT_FAILED
 
     # 5. Agent cash-in issue.
-    if lexicon.contains_any(norm, lexicon.CASH_IN_CUES) or (
-        lexicon.contains_any(norm, lexicon.AGENT_CUES) and user_type == "agent"
-    ):
+    if is_agent:
         return CaseType.AGENT_CASH_IN_ISSUE
 
     # 6. Merchant settlement delay.
-    if lexicon.contains_any(norm, lexicon.SETTLEMENT_CUES) or (
-        lexicon.contains_any(norm, lexicon.MERCHANT_CUES) and user_type == "merchant"
-    ):
+    if is_merchant:
         return CaseType.MERCHANT_SETTLEMENT_DELAY
 
     # 7. Refund request (no fraud cue).

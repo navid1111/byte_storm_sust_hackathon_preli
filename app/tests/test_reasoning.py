@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from engine.investigator import analyze
+from models.request import TicketRequest
 from models.response import TicketAnalysis
 
 FIXTURES_PATH = Path(__file__).parent / "fixtures" / "cases.json"
@@ -44,7 +45,7 @@ def _ids_from_history(request: dict) -> set[str]:
 
 def _run_case(name: str) -> TicketAnalysis:
     case = CASES_BY_NAME[name]
-    return analyze(case["request"])
+    return analyze(TicketRequest(**case["request"]))
 
 
 # ---------------------------------------------------------------------------

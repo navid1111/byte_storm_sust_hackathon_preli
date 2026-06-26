@@ -78,7 +78,7 @@ def human_review_required(
         return True
     if (amount or 0.0) >= HIGH_VALUE:
         return True
-    if user_type in {"merchant", "agent"} and case_type in {
+    if case_type in {
         CaseType.MERCHANT_SETTLEMENT_DELAY,
         CaseType.AGENT_CASH_IN_ISSUE,
     }:
