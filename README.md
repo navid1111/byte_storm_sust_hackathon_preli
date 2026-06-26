@@ -42,6 +42,7 @@ See `specs/001-queuestorm-investigator/spec.md` for the full contract.
 - [Monitoring (engineering differentiator)](#monitoring-engineering-differentiator)
 - [Sample request / response](#sample-request--response)
 - [Live deployment](#live-deployment)
+- [CI/CD pipeline](#cicd-pipeline)
 - [Build from source](#build-from-source)
 - [Repository layout](#repository-layout)
 - [Assumptions](#assumptions)
@@ -335,6 +336,8 @@ A coverage report is written to the terminal; CI is configured to fail under the
 ├── prometheus/                           # pre-existing observability stack
 ├── grafana/                              # pre-existing dashboard
 ├── docker-compose.yaml                   # local dev (app + Prometheus + Grafana)
+├── .github/
+│   └── workflows/ci.yml                  # GitHub Actions: test on push/PR, build-and-push Docker image on main
 ├── samples/
 │   ├── sample_input.json                 # public sample request
 │   └── sample_output.json                # public sample response (T030)
@@ -442,6 +445,41 @@ docker-compose up -d              # starts app, prometheus, grafana on a private
 `/metrics` is exposed by `prometheus-fastapi-instrumentator` in `app/main.py` and is reachable from outside the container (CORS `*`). Monitoring is **not** on the judge's required path — it's a quality signal only.
 
 > **Verified locally (2026-06-26):** `app` target is `up` in Prometheus; Grafana's **FastAPI Dashboard** is auto-provisioned under the `Services` folder. The pre-existing `prometheus` self-scrape job in `prometheus/prometheus.yml` requests `/prometheus/metrics` (older convention) and shows `down` against `prom/prometheus:latest`, which exposes metrics at the default `/metrics`. This is a cosmetic config quirk in the pre-existing stack and does **not** affect the FastAPI dashboard.
+
+---
+
+## CI/CD pipeline
+
+Every push and pull request to `main` runs a two-stage pipeline in GitHub Actions (`.github/workflows/ci.yml`):
+
+```mermaid
+flowchart LR
+    Push["push / PR to main"] --> Test{"test job<br/>ubuntu-latest<br/>Python 3.12"}
+    Test -->|"✅ pytest green<br/>coverage ≥ 85%"| Gate{"push event<br/>on main?"}
+    Test -->|"❌ any failure"| Stop(["❌ pipeline halted"])
+    Gate -->|"yes"| Build["build-and-push job<br/>Docker Buildx"]
+    Gate -->|"PR (no push)"| Done(["✅ tests only"])
+    Build --> Login["docker/login-action<br/>DOCKER_USERNAME + PAT"]
+    Login --> Meta["docker/metadata-action<br/>tags: latest + git SHA"]
+    Meta --> Push2["docker/build-push-action<br/>context: ./app<br/>GHA cache"]
+    Push2 --> Hub(["Docker Hub: navid1111 / fastapi-prometheus-grafana"])
+```
+
+### Stages
+
+| Stage | Trigger | What it does | Failure behaviour |
+|-------|---------|--------------|--------------------|
+| **`test`** | Every `push` and every `pull_request` to `main` | Sets up Python 3.12, installs `requirements.txt` + `requirements-dev.txt`, runs `pytest` with the `app/pytest.ini` coverage gate (`--cov-fail-under=85`). Latest run: **280 passed, 97.78 % coverage**. | Pipeline halts; PR cannot merge; `build-and-push` never runs. |
+| **`build-and-push`** | Only on `push` to `main` (after `test` passes); skipped on PRs | Logs into Docker Hub with `DOCKER_USERNAME` + `PERSONAL_ACCESS_TOKEN`, builds the image from `./app`, tags it `latest` and the long git SHA, pushes to `navid1111/fastapi-prometheus-grafana`, and uses GitHub Actions cache for fast rebuilds. | Image not published; service stays on the previous tag. |
+
+### Pipeline characteristics
+
+- **Test-first contract.** The `build-and-push` job has `needs: test`, so a broken test never produces a broken image.
+- **No deploy step in CI.** The image is published to Docker Hub but the live Render service is **not** auto-redeployed from CI. Render watches its own branch (or you click "Manual Deploy" from the dashboard). This separation avoids surprise prod changes from a single git push.
+- **No secrets in the workflow.** Only `DOCKER_USERNAME` and `PERSONAL_ACCESS_TOKEN` are referenced, both stored as GitHub repository secrets. No `GEMINI_API_KEY`, no `.env` values — those stay on the hosting platform.
+- **Reproducible locally.** Any developer (or judge) can replay the test stage with one command: `cd app && pytest`. See [Build from source](#build-from-source) below.
+
+> Pulling the latest image after a green main-push: `docker pull navid1111/fastapi-prometheus-grafana:latest`.
 
 ---
 
