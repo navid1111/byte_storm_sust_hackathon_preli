@@ -42,6 +42,9 @@ def analyze(ticket: TicketRequest) -> TicketAnalysis:
     agent_summary, next_action, customer_reply = reply.draft(
         case_type, match_result.transaction_id, evidence_verdict
     )
+    from engine.safety import sanitize_customer_reply, sanitize_recommended_next_action
+    customer_reply = sanitize_customer_reply(customer_reply)
+    next_action = sanitize_recommended_next_action(next_action)
 
     # 7. Reason codes + confidence.
     reason_codes = [case_type.value, *match_result.cues, evidence_verdict.value]
