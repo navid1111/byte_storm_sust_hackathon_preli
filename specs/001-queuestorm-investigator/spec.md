@@ -6,6 +6,7 @@
 **Event**: bKash presents SUST CSE Carnival 2026 — Codex Community Hackathon, Online Preliminary Round
 **Round window**: 7:30 PM – 12:00 AM (4.5 hours)
 **Source docs**: `SUST_Hackathon_Preli_Problem_Statement.pdf`, `SUST_Preli_Evaluation_Rubric_With_Explanations.pdf`, `SUST_Preli_Team_Instructions_Manual.pdf`
+**Companion**: [`plan.md`](./plan.md) · [`tasks.md`](./tasks.md) · [`decision-rules.md`](./decision-rules.md) (matcher weights, severity table, phishing cues, multilingual synonyms)
 
 ---
 
@@ -166,10 +167,17 @@ The judge harness exercises **only** these two endpoints.
 | `customer_reply` | string | **Yes** | Safe official reply respecting all Section 8 safety rules. |
 | `human_review_required` | boolean | **Yes** | True for disputes, suspicious cases, high-value cases, or ambiguous evidence. |
 | `confidence` | number | Optional | Float in [0, 1]. |
-| `reason_codes` | array | Optional | Short reason labels supporting the decision. |
+| `reason_codes` | array | Optional | **Freeform** array of short snake_case labels supporting the decision — no closed enum (see [`decision-rules.md`](./decision-rules.md) §6). |
 
 > **Enum exactness:** All enum values must match exactly. Case differences, plural forms, and
 > alternate spellings are scored as **schema violations**.
+>
+> **Optional fields:** `confidence` and `reason_codes` improve tie-breaker/reasoning signal but their
+> **absence is not a schema violation**. When present they must be the correct type. The example in
+> Section 6 shows them populated; they may be omitted without penalty.
+>
+> **Decision boundaries** (matching thresholds, verdict logic, severity table, phishing cues,
+> Bangla/Banglish synonyms) are specified authoritatively in [`decision-rules.md`](./decision-rules.md).
 
 ## 7. Enums & Taxonomy
 
@@ -287,10 +295,13 @@ engineering: optimization, deployment, cost-aware model usage, caching, monitori
 ## 13. Open Questions / Assumptions
 
 - **[ASSUMPTION]** `SUST_Preli_Sample_Cases.json` (10 worked cases) is referenced but **not present in
-  this repo**. We will obtain it from the organizers / problem pack to build the local test set; until
-  then, fixtures are derived from the schema examples in this spec.
-- **[ASSUMPTION]** "Wrong number" / wrong-transfer matching is heuristic (amount + timing + recipient
-  cues in the complaint vs. transaction entries) since no ground-truth matching key is provided.
+  this repo**. Because `test_reasoning.py` depends on ground-truth fixtures, **hand-authoring ~10
+  fixtures from the spec examples is promoted to a P0 task** (see [`tasks.md`](./tasks.md) T005a); swap
+  in the real cases the moment they are obtained.
+- **[ASSUMPTION]** Matching, verdict, severity, and phishing detection are **deliberate team heuristics**
+  (no ground-truth matching key is provided). All thresholds and weights are documented authoritatively
+  in [`decision-rules.md`](./decision-rules.md) and re-calibrated against the real sample cases when
+  available.
 - **[ASSUMPTION]** LLM use is **optional**. A deterministic rule-based core is the primary path (no API
   credits provided); an LLM is an optional enhancement for language understanding / reply drafting,
   gated behind a feature flag with a rule-based fallback. See `plan.md`.

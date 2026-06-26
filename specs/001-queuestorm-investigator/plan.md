@@ -1,6 +1,6 @@
 # Implementation Plan: QueueStorm Investigator
 
-**Spec**: [`spec.md`](./spec.md)
+**Spec**: [`spec.md`](./spec.md) · **Decision boundaries**: [`decision-rules.md`](./decision-rules.md)
 **Branch**: `001-queuestorm-investigator`
 **Created**: 2026-06-26
 
@@ -77,6 +77,10 @@ specs/001-queuestorm-investigator/{spec.md,plan.md,tasks.md}
 
 ## 4. Reasoning Pipeline (the core 35 points)
 
+> **All numeric thresholds, cue weights, the severity table, phishing cues, and the en/bn/Banglish
+> synonym lists live in [`decision-rules.md`](./decision-rules.md).** This section describes the
+> pipeline shape; that file is the authoritative source the code and tests both read from.
+
 Input → ordered stages, each deterministic and independently testable:
 
 1. **Normalize** — lowercase, strip, detect language signal; treat complaint as opaque data.
@@ -106,7 +110,8 @@ Input → ordered stages, each deterministic and independently testable:
   `Language`, `Channel`, `UserType`, `TransactionType`, `TransactionStatus`.
 - `TransactionEntry`: all fields optional-tolerant on parse (judge may send partials) but typed.
 - `TicketRequest`: `ticket_id` + `complaint` required; rest optional. Empty/whitespace complaint →
-  422 via validator (AC-9).
+  422 via validator (AC-9). **`model_config = ConfigDict(extra="ignore")`** pinned explicitly so the
+  harness may send extra/unknown top-level fields (e.g. open-ended `metadata`) without breaking parse.
 - `TicketAnalysis`: all Section 6 required fields; `confidence: float | None`, `reason_codes:
   list[str]`. Response is the single source of truth for schema correctness.
 
@@ -131,6 +136,9 @@ Input → ordered stages, each deterministic and independently testable:
 - Hard internal time budget well under 30 s; LLM calls wrapped with a timeout + rule fallback.
 - Stateless and side-effect-free → no crash surface from concurrent judge calls.
 - `/health` is trivial and dependency-free so it answers within 60 s of boot (AC-1).
+- **Cold-start guard:** the model/LLM client is **not** initialized at import time on the `/health`
+  path; the rule engine has no warm-up. Verify post-deploy that a cold container (or scale-from-zero on
+  Render/Lambda) serves `/health` within 60 s before relying on the live URL.
 
 ## 8. Deployment
 
@@ -141,6 +149,11 @@ Input → ordered stages, each deterministic and independently testable:
 - **Secrets:** env vars only; `.env.example` lists names. No secrets in repo/image/logs.
 - The existing `docker-compose.yaml` (app + Prometheus + Grafana) stays for local/monitoring; the
   judge only needs the `app` service.
+- **CORS:** kept (already wired, zero runtime/image cost, harmless for an automated harness). Not a
+  scoring factor either way — not worth removing during the round.
+- **Live-URL contingency:** during the judging window one teammate watches the live URL; if it drops,
+  the documented Docker run command (one line) is the immediate redeploy path. A live URL does not
+  remove the requirement to ship the runbook.
 
 ## 9. Testing Strategy (contract-first)
 
@@ -160,9 +173,14 @@ comparable `severity`, safe `customer_reply`).
 ## 10. Optional LLM Layer (flagged, default off)
 
 - `LLM_ENABLED=false` by default → fully deterministic, zero external dependency, zero cost.
-- When enabled: provider via env (`LLM_PROVIDER`, `*_API_KEY`, `MODEL_NAME`); used **only** for (a)
-  Banglish/Bangla intent disambiguation and (b) reply fluency — **never** for safety decisions or
-  enum selection. Output always passes through the same Pydantic validation + safety sanitizer.
+- **Provider: Google Gemini** (allowed under problem statement §9.1). Config via env: `LLM_ENABLED`,
+  `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, `MODEL_NAME` (e.g. a Flash-tier model for cost/latency).
+  Key lives only in `app/.env` (git-ignored) locally and in hosting env vars in deployment — never in
+  the repo. `.env.example` lists the **names** only.
+- When enabled: used **only** for (a) Banglish/Bangla intent disambiguation and (b) reply fluency —
+  **never** for safety decisions or enum selection. Output always passes through the same Pydantic
+  validation + safety sanitizer. Wrapped with a timeout + hard rule fallback so it is never on the
+  critical path (AC-12).
 - Rationale captured in README MODELS section (model, where it runs, why, cost note).
 
 ## 11. Risks & Mitigations

@@ -1,6 +1,6 @@
 # Tasks: QueueStorm Investigator
 
-**Spec**: [`spec.md`](./spec.md) · **Plan**: [`plan.md`](./plan.md)
+**Spec**: [`spec.md`](./spec.md) · **Plan**: [`plan.md`](./plan.md) · **Decision rules**: [`decision-rules.md`](./decision-rules.md)
 **Branch**: `001-queuestorm-investigator` · **Window**: 4.5 hours
 
 Ordered, dependency-aware tasks. `[P]` = parallelizable with sibling `[P]` tasks (different files, no
@@ -12,17 +12,26 @@ before adding polish.
 
 ## Phase 0 — Setup & Contract Skeleton  *(target: 0:00–0:30)*
 
+- [ ] **T000 [P0]** Hand-author ~10 fixture cases (request + expected `relevant_transaction_id`,
+  `evidence_verdict`, `case_type`, `department`, severity, safe-reply intent) from the spec examples +
+  [`decision-rules.md`](./decision-rules.md). **Blocks T017.** Cover: wrong_transfer/consistent,
+  payment_failed/inconsistent, empty-history/insufficient_data, phishing, duplicate, Bangla, Banglish,
+  prompt-injection. Swap for real `SUST_Preli_Sample_Cases.json` when obtained. → `app/tests/fixtures/cases.json`
 - [ ] **T001** Create branch `001-queuestorm-investigator`; add `app/config.py` reading env
-  (`LLM_ENABLED=false`, `LLM_PROVIDER`, `MODEL_NAME`, `PORT=8000`, request timeout). → `app/config.py`
+  (`LLM_ENABLED=false`, `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, `MODEL_NAME`, `PORT=8000`, request
+  timeout). → `app/config.py`
 - [ ] **T002** Define Pydantic enums with **exact** spec values: `EvidenceVerdict`, `CaseType`,
   `Severity`, `Department`, `Language`, `Channel`, `UserType`, `TransactionType`,
   `TransactionStatus`. *(AC-2)* → `app/models/response.py`, `app/models/request.py`
 - [ ] **T003** Define request models `TransactionEntry` + `TicketRequest` (`ticket_id`, `complaint`
-  required; rest optional; empty-complaint validator → 422). *(AC-2, AC-9)* → `app/models/request.py`
+  required; rest optional; empty-complaint validator → 422; pin `model_config =
+  ConfigDict(extra="ignore")` so unknown/extra harness fields don't break parse). *(AC-2, AC-9)*
+  → `app/models/request.py`
 - [ ] **T004** Define response model `TicketAnalysis` with all Section 6 required fields + optional
   `confidence`, `reason_codes`. *(AC-2)* → `app/models/response.py`
-- [ ] **T005** `.dockerignore` + `.env.example` (names only: `LLM_ENABLED`, `LLM_PROVIDER`,
-  `*_API_KEY`, `MODEL_NAME`, `PORT`). *(AC-13)* → `app/.dockerignore`, `app/.env.example`
+- [ ] **T005** `.dockerignore` (must exclude `.env`) + `.env.example` (names only: `LLM_ENABLED`,
+  `LLM_PROVIDER`, `GEMINI_API_KEY`, `MODEL_NAME`, `PORT`). Root `.gitignore` already ignores `.env`
+  (done). *(AC-13)* → `app/.dockerignore`, `app/.env.example`
 
 ## Phase 1 — Endpoints & Error Handling  *(target: 0:30–1:00)*
 
@@ -43,17 +52,20 @@ before adding polish.
 
 ## Phase 2 — Evidence Reasoning Engine (35 pts)  *(target: 1:00–2:30)*
 
-- [ ] **T012** `matcher.py` → `relevant_transaction_id`: extract amount/recipient/time/type cues from
-  complaint (en + bn + Banglish synonyms); score history entries; best-above-threshold or `null`.
-  **Never invent IDs.** *(AC-4, AC-10)* → `app/engine/matcher.py`
-- [ ] **T013** `verdict.py` → `evidence_verdict`: `insufficient_data` (no history/no match),
-  `inconsistent` (data contradicts claim), `consistent` (data supports claim). *(AC-5)*
+> Implement against [`decision-rules.md`](./decision-rules.md) — cue weights (§1), verdict logic (§2),
+> case/department/severity/review tables (§3), synonyms (§4), phishing cues (§5). Code and tests both
+> read those exact boundaries; do not invent ad-hoc thresholds.
+
+- [ ] **T012** `matcher.py` → `relevant_transaction_id`: implement cue weights + threshold + tie-break
+  from decision-rules §1 (synonyms §4); best-above-threshold or `null`. **Never invent IDs.**
+  *(AC-4, AC-10)* → `app/engine/matcher.py`
+- [ ] **T013** `verdict.py` → `evidence_verdict` per decision-rules §2: `insufficient_data` /
+  `inconsistent` / `consistent`; default to `insufficient_data` + review on doubt. *(AC-5)*
   → `app/engine/verdict.py`
-- [ ] **T014** `classifier.py` → `case_type` from keywords + transaction type/status signals; phishing
-  detection takes precedence on suspicious cues. *(AC-7)* → `app/engine/classifier.py`
-- [ ] **T015** `router.py` → `department` (Section 7.2 map), `severity` (amount/status/fraud),
-  `human_review_required` (dispute/suspicious/high-value/ambiguous → true). *(AC-7, AC-8)*
-  → `app/engine/router.py`
+- [ ] **T014** `classifier.py` → `case_type` per decision-rules §3.1 (first-match order, **phishing
+  checked first** §5). *(AC-7)* → `app/engine/classifier.py`
+- [ ] **T015** `router.py` → `department` (§3.2 map), `severity` (§3.3 table),
+  `human_review_required` (§3.4 conditions). *(AC-7, AC-8)* → `app/engine/router.py`
 - [ ] **T016** `investigator.py` orchestrator: normalize → match → verdict → classify → route →
   draft → sanitize → assemble `TicketAnalysis` (+ `reason_codes`, `confidence`). → `app/engine/investigator.py`
 - [ ] **T017 [P]** `test_reasoning.py` — matching, verdict (all 3), classification, routing on worked
@@ -94,7 +106,8 @@ before adding polish.
 - [ ] **T026** Update `app/Dockerfile`: `python:3.12-slim`, `--no-cache-dir`, bind `0.0.0.0:$PORT`,
   no baked models, image < 500 MB. *(AC-1, AC-14)* → `app/Dockerfile`
 - [ ] **T027** Deploy to a live HTTPS host (Render/Railway/Fly/Poridhi/EC2); verify `/health` +
-  `/analyze-ticket` reachable with **no login**. *(AC-14)*
+  `/analyze-ticket` reachable **from outside the team network** with **no login**. Confirm a cold
+  container / scale-from-zero serves `/health` within 60 s. *(AC-1, AC-14)*
 - [ ] **T028** Write `RUNBOOK` steps in README (build + run commands, port, env-file) so judges can
   redeploy even if the live URL drops. *(AC-14)*
 
@@ -122,11 +135,12 @@ before adding polish.
 ## Critical Path & Parallelization
 
 ```
-T001→T002→T003→T004  (models)            T005 [P]
-        ↓
+T000 [P0 fixtures] ──────────────┐ (blocks T017)
+T001→T002→T003→T004  (models)     │       T005 [P]
+        ↓                         │
 T006→T007→T008→T009  (endpoints/errors)  T010,T011 [P tests]
         ↓  ── Gate G1 ──
-T012→T013→T014→T015→T016 (reasoning)     T017 [P test]
+T012→T013→T014→T015→T016 (reasoning)     T017 [P test ← needs T000]
         ↓
 T018→T019→T020 (safety)  ── Gate G2 ──   T021 [P test]
         ↓
