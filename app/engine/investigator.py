@@ -46,6 +46,18 @@ def analyze(ticket: TicketRequest) -> TicketAnalysis:
     customer_reply = sanitize_customer_reply(customer_reply)
     next_action = sanitize_recommended_next_action(next_action)
 
+    # Optional LLM fluency pass (T025) — default OFF. Only the customer reply text
+    # is polished; enums/verdict/safety stay rule-based. The result is re-sanitized
+    # so the model can never introduce an unsafe reply.
+    from config import settings as _settings
+
+    if _settings.llm_ready:
+        from engine import llm
+
+        customer_reply = sanitize_customer_reply(
+            llm.polish_reply(customer_reply, ticket.complaint, ticket.language)
+        )
+
     # 7. Reason codes + confidence.
     reason_codes = [case_type.value, *match_result.cues, evidence_verdict.value]
     confidence = _confidence(match_result.score, evidence_verdict)

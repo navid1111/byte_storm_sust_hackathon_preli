@@ -1,0 +1,4 @@
+# Optional dependency for the LLM enhancement layer (T025).
+# Only needed when LLM_ENABLED=true; the default rule-based engine needs none of this.
+# Install with:  pip install -r requirements-llm.txt
+google-generativeai>=0.8.0
