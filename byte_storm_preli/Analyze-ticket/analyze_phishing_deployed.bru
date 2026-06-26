@@ -1,0 +1,27 @@
+meta {
+  name: analyze_phishing_deployed
+  type: http
+  seq: 4
+}
+
+post {
+  url: https://byte-storm-sust-hackathon-preli.onrender.com/analyze-ticket
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "ticket_id": "TKT-PHISH-1",
+    "complaint": "A caller claiming to be bKash asked me to share my OTP to unlock my account",
+    "language": "en",
+    "channel": "call_center",
+    "user_type": "customer",
+    "transaction_history": []
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

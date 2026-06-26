@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "byte_storm_preli",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

@@ -1,0 +1,16 @@
+meta {
+  name: metrics_deployed
+  type: http
+  seq: 2
+}
+
+get {
+  url: https://byte-storm-sust-hackathon-preli.onrender.com/metrics
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
