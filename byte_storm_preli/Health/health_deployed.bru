@@ -1,0 +1,16 @@
+meta {
+  name: health_deployed
+  type: http
+  seq: 3
+}
+
+get {
+  url: https://byte-storm-sust-hackathon-preli.onrender.com/health
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

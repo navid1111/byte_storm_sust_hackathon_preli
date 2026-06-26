@@ -253,8 +253,9 @@ def test_empty_complaint_string_returns_422():
 # ---------------------------------------------------------------------------
 # Error-response hygiene (spec §9)
 # ---------------------------------------------------------------------------
-def test_error_response_shape_is_detail_and_code_only():
-    # The most representative malformed case.
+def test_error_response_shape_is_detail_only():
+    # The most representative malformed case. The canonical error envelope is
+    # a single non-sensitive "detail" field (spec §4.1).
     resp = client.post(
         "/analyze-ticket",
         data="not json",
@@ -262,7 +263,7 @@ def test_error_response_shape_is_detail_and_code_only():
     )
     assert resp.status_code == 400
     body = resp.json()
-    assert set(body.keys()) == {"detail", "code"}, body
+    assert set(body.keys()) == {"detail"}, body
 
 
 def test_error_body_does_not_echo_request_payload():

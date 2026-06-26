@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from api.errors import register_exception_handlers
+from api.errors import register_error_handlers
 from api.routes import router
 
 app = FastAPI(
@@ -20,6 +20,8 @@ app = FastAPI(
     version="1.0.0",
     description="Reads a complaint plus recent transactions, decides what happened, routes it, and drafts a safe reply.",
 )
+
+register_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +32,5 @@ app.add_middleware(
 )
 
 app.include_router(router)
-register_exception_handlers(app)
 
 Instrumentator().instrument(app).expose(app)

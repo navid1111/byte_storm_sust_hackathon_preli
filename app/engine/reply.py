@@ -51,7 +51,7 @@ _TEMPLATES = {
     CaseType.REFUND_REQUEST: (
         "Customer is requesting a refund{txn}.",
         "Review refund eligibility against policy; do not promise an outcome.",
-        "Thank you for reaching out about a refund. We have recorded your request{txn} "
+        "Thank you for your request about a refund. We have recorded your request{txn} "
         "and it will be reviewed for eligibility. Any eligible amount will be returned "
         "through official channels. " + _SECURITY_NOTE,
     ),
@@ -64,7 +64,7 @@ _TEMPLATES = {
     CaseType.OTHER: (
         "General complaint requiring review{txn}.",
         "Review the ticket details and route to the appropriate team.",
-        "Thank you for contacting us. We have received your request{txn} and our team is "
+        "Thank you for your message. We have received your request{txn} and our team is "
         "reviewing it. " + _SECURITY_NOTE,
     ),
 }
