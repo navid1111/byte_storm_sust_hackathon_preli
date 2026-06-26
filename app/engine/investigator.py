@@ -42,7 +42,12 @@ def analyze(ticket: TicketRequest) -> TicketAnalysis:
     agent_summary, next_action, customer_reply = reply.draft(
         case_type, match_result.transaction_id, evidence_verdict
     )
-    from engine.safety import sanitize_customer_reply, sanitize_recommended_next_action
+    from engine.safety import (
+        sanitize_agent_summary,
+        sanitize_customer_reply,
+        sanitize_recommended_next_action,
+    )
+    agent_summary = sanitize_agent_summary(agent_summary)
     customer_reply = sanitize_customer_reply(customer_reply)
     next_action = sanitize_recommended_next_action(next_action)
 

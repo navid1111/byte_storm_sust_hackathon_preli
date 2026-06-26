@@ -48,7 +48,7 @@ curl http://localhost:8000/health
 
 curl -X POST http://localhost:8000/analyze-ticket \
   -H 'Content-Type: application/json' \
-  -d @samples/sample_input.json
+  -d @../samples/sample_input.json
 ```
 
 ### Run locally with Python 3.12+
@@ -288,6 +288,141 @@ REQUEST_TIMEOUT_SECONDS  # default 25 (well under the 30 s judge budget)
 ## License
 
 See `LICENSE`.
+
+---
+
+## RUNBOOK — Reproduce locally or redeploy for judges
+
+> This section is the single source of truth for redeploying the service.
+> If the live URL drops, a judge should be able to clone, build, and run
+> the service end-to-end using only the steps below. **No secrets, API
+> keys, or `.env` values are committed to this repo.**
+
+### Exposed endpoints
+
+| Method | Path                | Purpose                                    |
+|--------|---------------------|--------------------------------------------|
+| `GET`  | `/health`           | Liveness probe — returns `{"status":"ok"}`. Dependency-free, so it answers within ~60 s of a cold start (AC-1). |
+| `POST` | `/analyze-ticket`   | Investigates one complaint + transaction history and returns a structured `TicketAnalysis` (spec §6). |
+| `GET`  | `/metrics`          | Prometheus exposition (engineering differentiator; not on the judge's required path). |
+
+### Required environment variables (names only — values set on host)
+
+| Variable                  | Required? | Purpose                                                |
+|---------------------------|-----------|--------------------------------------------------------|
+| `PORT`                    | optional  | HTTP port. Defaults to `8000`. Hosting platforms (Render/Railway/Fly/Heroku) inject their own `PORT`; this app honors it. |
+| `LLM_ENABLED`             | optional  | `false` (default) keeps the service fully deterministic. Set to `true` to enable the optional Gemini layer for Banglish/Bangla disambiguation + reply fluency. **Never used for safety or enum decisions.** |
+| `LLM_PROVIDER`            | only if `LLM_ENABLED=true` | Currently `gemini` is the only supported provider. |
+| `GEMINI_API_KEY`          | only if `LLM_ENABLED=true` | Set on the hosting platform (Render "Secret File" / Railway "Variables" / Fly "Secrets"). **Never commit.** |
+| `MODEL_NAME`              | only if `LLM_ENABLED=true` | Defaults to `gemini-1.5-flash`. |
+| `REQUEST_TIMEOUT_SECONDS` | optional  | Hard ceiling per `/analyze-ticket` call. Default `25` (under the 30 s judge budget). |
+
+> **Secrets.** Real values are set on the hosting platform (Render / Railway / Fly / Poridhi / EC2) or in a local `.env` file that is git-ignored. The repo ships only `app/.env.example` which contains **variable names** — no values.
+
+### Option A — Run with Docker (recommended for judges)
+
+The `Dockerfile` build context is the `app/` directory.
+
+```bash
+cd app
+docker build -t queuestorm-investigator .
+docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
+```
+
+Notes:
+- The image is `python:3.12-slim`, no GPU, no model weights, no large downloads. Expected image size < 500 MB.
+- `--env-file .env.example` is safe — that file contains only variable names. Replace with `--env-file .env` if you have a populated local `.env` (still git-ignored).
+- The container binds to `0.0.0.0:${PORT:-8000}`. If you set `PORT=8080` in your env file, also map `-p 8080:8080`.
+
+Health check + sample probe:
+
+```bash
+# 1. Liveness
+curl http://localhost:8000/health
+# {"status":"ok"}
+
+# 2. Investigation (sample input shipped in repo root)
+curl -X POST http://localhost:8000/analyze-ticket \
+  -H 'Content-Type: application/json' \
+  -d @../samples/sample_input.json
+```
+
+### Option B — Run locally with Python 3.12+
+
+```bash
+cd app
+
+# Create and activate a virtualenv
+python -m venv .venv
+# macOS / Linux:
+source .venv/bin/activate
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+
+# Install runtime + dev dependencies
+pip install -r requirements.txt -r requirements-dev.txt
+
+# Run the service on port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Health check + sample probe:
+
+```powershell
+# 1. Liveness
+curl http://localhost:8000/health
+# {"status":"ok"}
+
+# 2. Investigation (sample input shipped in repo root)
+curl -X POST http://localhost:8000/analyze-ticket `
+  -H 'Content-Type: application/json' `
+  -d (Get-Content -Raw ..\samples\sample_input.json)
+```
+
+### Option C — Deploy to a live HTTPS host (Render / Railway / Fly / Poridhi / EC2)
+
+1. Build context = `app/`.
+2. Start command (the Dockerfile already runs it, but if the platform asks):
+   ```
+   uvicorn main:app --host 0.0.0.0 --port $PORT
+   ```
+3. Set env vars in the platform's dashboard:
+   - `PORT` (auto-set by the platform in most cases)
+   - `LLM_ENABLED=false` unless you opt in
+   - `GEMINI_API_KEY` only if you opt in
+4. Verify the live URL with:
+   ```bash
+   curl https://<your-url>/health
+   curl -X POST https://<your-url>/analyze-ticket \
+     -H 'Content-Type: application/json' \
+     -d @samples/sample_input.json
+   ```
+5. Confirm a cold container (scale-from-zero) serves `/health` within 60 s.
+
+### Run the test suite
+
+```bash
+cd app
+pytest                                # full suite with coverage gate
+pytest --no-cov -q                    # quick run, no coverage gate
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `docker build` fails with "no such file or directory: requirements.txt" | Build context is the repo root, not `app/`. | Run `docker build` from `app/` (see Option A). |
+| `/analyze-ticket` returns 500 | A recent change to `app/engine/*` regressed. | Run `pytest --no-cov -q` from `app/`. All 271 tests should pass before redeploying. |
+| LLM calls fail with `401` | `GEMINI_API_KEY` is unset or wrong. | Either fix the secret on the hosting platform, or set `LLM_ENABLED=false` to run fully deterministic (default). |
+| Cold start takes > 60 s | A heavy dependency was added. | The current `requirements.txt` is intentionally minimal: `fastapi`, `uvicorn`, `prometheus-fastapi-instrumentator`. Anything heavier (PyTorch, sentence-transformers) will violate the cold-start budget — do not add it. |
+
+### What this runbook guarantees
+
+- The Docker image builds from `python:3.12-slim` and exposes port `8000`.
+- `/health` answers `{"status":"ok"}` within 60 s of a cold start.
+- `/analyze-ticket` returns a schema-valid `TicketAnalysis` for any spec-conformant request.
+- No real secrets, customer data, transaction data, or API keys are committed.
+- The same code path runs locally, in Docker, and on a live host — only the entrypoint varies.
 
 ---
 
