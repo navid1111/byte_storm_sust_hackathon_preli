@@ -1,0 +1,36 @@
+meta {
+  name: analyze_llm_banglish_local
+  type: http
+  seq: 5
+}
+
+post {
+  url: http://localhost:8000/analyze-ticket
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "ticket_id": "TKT-LLM-1",
+    "complaint": "Vai ami bhul number e 3000 taka pathaisi ekhon ki korbo? Taka ferot pabo?",
+    "language": "mixed",
+    "channel": "in_app_chat",
+    "user_type": "customer",
+    "transaction_history": [
+      {
+        "transaction_id": "TXN-5521",
+        "timestamp": "2026-04-14T12:05:00Z",
+        "type": "transfer",
+        "amount": 3000,
+        "counterparty": "+8801712345678",
+        "status": "completed"
+      }
+    ]
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

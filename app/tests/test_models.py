@@ -185,15 +185,25 @@ def test_settings_defaults(monkeypatch):
     for var in ("LLM_ENABLED", "GEMINI_API_KEY", "MODEL_NAME", "PORT", "REQUEST_TIMEOUT_S"):
         monkeypatch.delenv(var, raising=False)
     s = Settings()
-    assert s.llm_enabled is False
     assert s.llm_provider == "gemini"
+    # No key configured → LLM stays off (safe rule-based default), even though
+    # the layer is allowed to auto-enable.
     assert s.llm_ready is False
     assert s.port == 8000
 
 
-def test_settings_llm_ready_requires_key(monkeypatch):
-    monkeypatch.setenv("LLM_ENABLED", "true")
+def test_settings_llm_auto_enables_when_key_present(monkeypatch):
+    # Presence of a key alone turns the LLM on — no LLM_ENABLED flag needed
+    # (so a deployed server only sets GEMINI_API_KEY).
+    monkeypatch.delenv("LLM_ENABLED", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert Settings().llm_ready is False
     monkeypatch.setenv("GEMINI_API_KEY", "dummy")
     assert Settings().llm_ready is True
+
+
+def test_settings_llm_enabled_false_forces_off(monkeypatch):
+    # Explicit override still wins, even with a key present.
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")
+    monkeypatch.setenv("LLM_ENABLED", "false")
+    assert Settings().llm_ready is False

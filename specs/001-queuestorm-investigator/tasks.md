@@ -27,17 +27,17 @@ Owner is tagged inline after each task ID, e.g. `**T001** _(Navid)_`.
   [`decision-rules.md`](./decision-rules.md). **Blocks T017.** Cover: wrong_transfer/consistent,
   payment_failed/inconsistent, empty-history/insufficient_data, phishing, duplicate, Bangla, Banglish,
   prompt-injection. Swap for real `SUST_Preli_Sample_Cases.json` when obtained. → `app/tests/fixtures/cases.json`
-- [ ] **T001** _(Navid)_ Create branch `001-queuestorm-investigator`; add `app/config.py` reading env
+- [x] **T001** _(Navid)_ Create branch `001-queuestorm-investigator`; add `app/config.py` reading env
   (`LLM_ENABLED=false`, `LLM_PROVIDER=gemini`, `GEMINI_API_KEY`, `MODEL_NAME`, `PORT=8000`, request
   timeout). → `app/config.py`
-- [ ] **T002** _(Navid)_ Define Pydantic enums with **exact** spec values: `EvidenceVerdict`, `CaseType`,
+- [x] **T002** _(Navid)_ Define Pydantic enums with **exact** spec values: `EvidenceVerdict`, `CaseType`,
   `Severity`, `Department`, `Language`, `Channel`, `UserType`, `TransactionType`,
   `TransactionStatus`. *(AC-2)* → `app/models/response.py`, `app/models/request.py`
-- [ ] **T003** _(Navid)_ Define request models `TransactionEntry` + `TicketRequest` (`ticket_id`, `complaint`
+- [x] **T003** _(Navid)_ Define request models `TransactionEntry` + `TicketRequest` (`ticket_id`, `complaint`
   required; rest optional; empty-complaint validator → 422; pin `model_config =
   ConfigDict(extra="ignore")` so unknown/extra harness fields don't break parse). *(AC-2, AC-9)*
   → `app/models/request.py`
-- [ ] **T004** _(Navid)_ Define response model `TicketAnalysis` with all Section 6 required fields + optional
+- [x] **T004** _(Navid)_ Define response model `TicketAnalysis` with all Section 6 required fields + optional
   `confidence`, `reason_codes`. *(AC-2)* → `app/models/response.py`
 - [ ] **T005** _(Shadman)_ `.dockerignore` (must exclude `.env`) + `.env.example` (names only: `LLM_ENABLED`,
   `LLM_PROVIDER`, `GEMINI_API_KEY`, `MODEL_NAME`, `PORT`). Root `.gitignore` already ignores `.env`
@@ -45,10 +45,10 @@ Owner is tagged inline after each task ID, e.g. `**T001** _(Navid)_`.
 
 ## Phase 1 — Endpoints & Error Handling  *(target: 0:30–1:00)*
 
-- [ ] **T006** _(Navid)_ Rewrite `app/main.py`: keep CORS + Prometheus instrumentation; mount API router; remove
+- [x] **T006** _(Navid)_ Rewrite `app/main.py`: keep CORS + Prometheus instrumentation; mount API router; remove
   "Hello World" placeholder. → `app/main.py`
-- [ ] **T007** _(Navid)_ `GET /health` → `{"status":"ok"}`, dependency-free, instant. *(AC-1)* → `app/api/routes.py`
-- [ ] **T008** _(Navid)_ `POST /analyze-ticket` stub: parse `TicketRequest`, call engine, return `TicketAnalysis`.
+- [x] **T007** _(Navid)_ `GET /health` → `{"status":"ok"}`, dependency-free, instant. *(AC-1)* → `app/api/routes.py`
+- [x] **T008** _(Navid)_ `POST /analyze-ticket` stub: parse `TicketRequest`, call engine, return `TicketAnalysis`.
   → `app/api/routes.py`
 - [ ] **T009** _(Shadman)_ Exception handlers → 400 (malformed/missing), 422 (semantic), 500 (internal). Bodies
   carry **non-sensitive** messages only; never leak stack traces/secrets. *(AC-9, AC-13)*
@@ -66,17 +66,17 @@ Owner is tagged inline after each task ID, e.g. `**T001** _(Navid)_`.
 > case/department/severity/review tables (§3), synonyms (§4), phishing cues (§5). Code and tests both
 > read those exact boundaries; do not invent ad-hoc thresholds.
 
-- [ ] **T012** _(Navid)_ `matcher.py` → `relevant_transaction_id`: implement cue weights + threshold + tie-break
+- [x] **T012** _(Navid)_ `matcher.py` → `relevant_transaction_id`: implement cue weights + threshold + tie-break
   from decision-rules §1 (synonyms §4); best-above-threshold or `null`. **Never invent IDs.**
   *(AC-4, AC-10)* → `app/engine/matcher.py`
-- [ ] **T013** _(Navid)_ `verdict.py` → `evidence_verdict` per decision-rules §2: `insufficient_data` /
+- [x] **T013** _(Navid)_ `verdict.py` → `evidence_verdict` per decision-rules §2: `insufficient_data` /
   `inconsistent` / `consistent`; default to `insufficient_data` + review on doubt. *(AC-5)*
   → `app/engine/verdict.py`
-- [ ] **T014** _(Navid)_ `classifier.py` → `case_type` per decision-rules §3.1 (first-match order, **phishing
+- [x] **T014** _(Navid)_ `classifier.py` → `case_type` per decision-rules §3.1 (first-match order, **phishing
   checked first** §5). *(AC-7)* → `app/engine/classifier.py`
 - [ ] **T015** _(Shadman)_ `router.py` → `department` (§3.2 map), `severity` (§3.3 table),
   `human_review_required` (§3.4 conditions). *(AC-7, AC-8)* → `app/engine/router.py`
-- [ ] **T016** _(Navid)_ `investigator.py` orchestrator: normalize → match → verdict → classify → route →
+- [x] **T016** _(Navid)_ `investigator.py` orchestrator: normalize → match → verdict → classify → route →
   draft → sanitize → assemble `TicketAnalysis` (+ `reason_codes`, `confidence`). → `app/engine/investigator.py`
 - [ ] **T017 [P]** _(Jyoti)_ `test_reasoning.py` — matching, verdict (all 3), classification, routing on worked
   cases incl. contradiction & empty-history. *(AC-4, AC-5, AC-7, AC-8)* → `app/tests/test_reasoning.py`
@@ -104,20 +104,25 @@ Owner is tagged inline after each task ID, e.g. `**T001** _(Navid)_`.
   → `app/tests/test_robustness.py`
 - [ ] **T023** _(Shadman)_ Internal time budget < 30 s; if `LLM_ENABLED`, wrap LLM calls with timeout + hard rule
   fallback so the critical path is never blocked. *(AC-12)* → `app/engine/llm.py`, `app/engine/investigator.py`
-- [ ] **T024** _(Navid)_ Confirm p95 latency target with a quick local load check (≤ 5 s full credit). *(AC-12)*
+- [x] **T024** _(Navid)_ Confirm p95 latency target with a quick local load check (≤ 5 s full credit). *(AC-12)*
+  → `scripts/latency_check.sh`. **Measured 2026-06-26:** p95 = 27 ms local / 339 ms live Render
+  (target: < 5000 ms).
 
 ## Phase 5 — Optional LLM Layer  *(target: only if ahead of schedule)*
 
-- [ ] **T025 [P]** _(Navid)_ `llm.py` flagged client (default off): Bangla/Banglish disambiguation + reply
+- [x] **T025 [P]** _(Navid)_ `llm.py` flagged client (default off): Bangla/Banglish disambiguation + reply
   fluency only; never safety/enum decisions; output re-validated + re-sanitized. → `app/engine/llm.py`
 
 ## Phase 6 — Deployment & Reproducibility (5 pts)  *(target: 3:45–4:10)*
 
 - [ ] **T026** _(Shadman)_ Update `app/Dockerfile`: `python:3.12-slim`, `--no-cache-dir`, bind `0.0.0.0:$PORT`,
   no baked models, image < 500 MB. *(AC-1, AC-14)* → `app/Dockerfile`
-- [ ] **T027** _(Navid)_ Deploy to a live HTTPS host (Render/Railway/Fly/Poridhi/EC2); verify `/health` +
+- [x] **T027** _(Navid)_ Deploy to a live HTTPS host (Render/Railway/Fly/Poridhi/EC2); verify `/health` +
   `/analyze-ticket` reachable **from outside the team network** with **no login**. Confirm a cold
   container / scale-from-zero serves `/health` within 60 s. *(AC-1, AC-14)*
+  → Deployed at `https://byte-storm-sust-hackathon-preli.onrender.com`. **Verified 2026-06-26**:
+  `/health` returns 200 (cold-start ~30 s), `/analyze-ticket` returns schema-valid 200, `/metrics` 200,
+  no login. URL documented in README "Live deployment" section.
 - [ ] **T028** _(Shadman)_ Write `RUNBOOK` steps in README (build + run commands, port, env-file) so judges can
   redeploy even if the live URL drops. *(AC-14)*
 
@@ -126,18 +131,23 @@ Owner is tagged inline after each task ID, e.g. `**T001** _(Navid)_`.
 - [ ] **T029** _(Jyoti)_ README.md: overview, setup, run command, tech stack, **MODELS section** (every model,
   where it runs, why; cost note — rule-based default, LLM optional), AI approach, **safety logic**,
   assumptions, **known limitations**. → `README.md`
-- [ ] **T030 [P]** _(Navid)_ Generate `samples/sample_output.json` from a public sample case (real input/output
-  pair). Required deliverable. → `samples/sample_output.json`
+- [x] **T030 [P]** _(Navid)_ Generate `samples/sample_output.json` from a public sample case (real input/output
+  pair). Required deliverable. → `samples/sample_output.json` (814 bytes, captured 2026-06-26 from a live
+  POST against the local FastAPI instance with `samples/sample_input.json`).
 - [ ] **T031 [P]** _(Jyoti)_ Add sample request/response to README; confirm `.env.example` complete; "no real
   data / no secrets committed" statements. *(AC-13)* → `README.md`
-- [ ] **T032** _(Navid)_ Final pre-submit checklist pass (manual §16): health ok, analyze-ticket ok, safety
+- [x] **T032** _(Navid)_ Final pre-submit checklist pass (manual §16): health ok, analyze-ticket ok, safety
   cases pass, endpoint deployed or Docker ready, repo accessible to organizer **bipulhf**, README
   complete, `.env.example` present, no secrets, sample output present.
+  → `PRE_SUBMIT_CHECKLIST.md` (Navid, 2026-06-26). 260 pytest passed, 97.91% coverage; smoke test
+  10/10 PASS against both local docker app and live Render URL.
 
 ## Phase 8 — Stretch (tie-breaker #5: monitoring/engineering)  *(only if time remains)*
 
-- [ ] **T033 [P]** _(Navid)_ Verify existing Prometheus + Grafana stack still scrapes `/metrics`; reference the
+- [x] **T033 [P]** _(Navid)_ Verify existing Prometheus + Grafana stack still scrapes `/metrics`; reference the
   monitoring dashboard in README as an engineering differentiator (not on judge's required path).
+  → **Verified 2026-06-26** via `curl localhost:9090/api/v1/targets` (app target `up`) and Grafana
+  `/api/search?query=fast` (FastAPI Dashboard provisioned). README has a "Monitoring" subsection.
 - [ ] **T034 [P]** _(Jyoti)_ Record ≤ 90 s architecture walkthrough video (tie-breaker #8).
 
 ---
