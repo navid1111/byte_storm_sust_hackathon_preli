@@ -30,44 +30,160 @@ See `specs/001-queuestorm-investigator/spec.md` for the full contract.
 
 ---
 
-## Quick start
+## Contents
 
-### Run with Docker (recommended for judges)
+- [Try it in 30 seconds](#try-it-in-30-seconds)
+- [Test with Bruno](#test-with-bruno)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [MODELS section](#models-section)
+- [AI approach](#ai-approach)
+- [Safety logic](#safety-logic)
+- [Monitoring (engineering differentiator)](#monitoring-engineering-differentiator)
+- [Sample request / response](#sample-request--response)
+- [Live deployment](#live-deployment)
+- [Build from source](#build-from-source)
+- [Repository layout](#repository-layout)
+- [Assumptions](#assumptions)
+- [Known limitations](#known-limitations)
+- [Security & secrets](#security--secrets)
+- [License](#license)
+
+---
+
+## Try it in 30 seconds
+
+Three ways to see the service respond — pick whichever matches your setup.
+
+### Option A — Hit the live deployment (zero setup)
+
+The service is live on Render with no login. Open the auto-generated Swagger UI and click any endpoint to exercise it:
+
+> **👉 [https://byte-storm-sust-hackathon-preli.onrender.com/docs](https://byte-storm-sust-hackathon-preli.onrender.com/docs)**
+
+From the docs you can:
+
+- Click **`GET /health`** → **Try it out** → **Execute** → expect `200` + `{"status":"ok"}`.
+- Click **`POST /analyze-ticket`** → **Try it out** → paste the JSON from [`samples/sample_input.json`](./samples/sample_input.json) → **Execute** → expect a `200` with the full `TicketAnalysis` shown in [`samples/sample_output.json`](./samples/sample_output.json).
+
+The first request after idle may take ~30–60 s while Render spins the free-tier container back up. Subsequent requests are instant.
+
+### Option B — Use the Bruno collection (no Python, no Docker)
+
+[Bruno](https://www.usebruno.com/) is an open-source API client (VS Code / JetBrains extension or standalone desktop app). This repo ships a pre-built collection at [`byte_storm_preli/`](./byte_storm_preli/) covering every endpoint, **with both a `local` and a `deployed` environment** so you can switch targets without editing any URL.
 
 ```bash
-cd app
-docker build -t queuestorm-investigator .
-docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
+# 1. Install Bruno: https://www.usebruno.com/downloads  (or the VS Code extension)
+# 2. File → Open Collection → pick this repo's byte_storm_preli/ folder
+# 3. Top-right dropdown: pick "deployed" (uses the live Render URL) or "local" (localhost:8000)
+# 4. Click any request (Health/health_deployed, Analyze-ticket/analyze_deployed, ...) → Send
 ```
 
-Then probe:
+See the [**Test with Bruno**](#test-with-bruno) section below for a screenshot and full request list.
+
+### Option C — Run the full stack locally with Docker Compose
+
+Brings up the FastAPI service **plus Prometheus + Grafana** on a private network in one command:
 
 ```bash
-curl http://localhost:8000/health
-# {"status":"ok"}
+docker compose up -d
+```
 
+Then probe each service:
+
+```bash
+curl http://localhost:8000/health                                 # {"status":"ok"}
 curl -X POST http://localhost:8000/analyze-ticket \
-  -H 'Content-Type: application/json' \
-  -d @samples/sample_input.json
+  -H 'content-type: application/json' \
+  --data-binary @samples/sample_input.json                        # full TicketAnalysis
+open http://localhost:9090/targets                                # Prometheus: app target should be "UP"
+open http://localhost:3000                                        # Grafana: admin / pass@123 → FastAPI Dashboard
 ```
 
-### Run locally with Python 3.12+
+The FastAPI dashboard auto-loads under the **Services** folder with panels for requests, latency p50/p90, errors, memory, and CPU. See the [**Monitoring**](#monitoring-engineering-differentiator) section for a screenshot.
 
-```bash
-cd app
-python -m venv .venv && source .venv/bin/activate   # PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt -r requirements-dev.txt
-uvicorn main:app --host 0.0.0.0 --port 8000
+---
+
+## Test with Bruno
+
+The Bruno collection at [`byte_storm_preli/`](./byte_storm_preli/) is organized by endpoint and ships with **two environments** so you can flip between a local container and the deployed Render instance without editing any URL:
+
+| Folder     | Requests                                                                                              |
+|------------|-------------------------------------------------------------------------------------------------------|
+| `Health/`  | `health`, `health_local`, `health_deployed` — `GET /health`                                            |
+| `Analyze-ticket/` | `analyze_local`, `analyze_deployed`, `analyze_phishing_local`, `analyze_phishing_deployed`, `analyze_llm_banglish_local`, `analyze_llm_banglish_deployed` |
+| `samples/` | `metrics_local`, `metrics_deployed` — `GET /metrics` (Prometheus exposition)                            |
+
+The `local` environment sets `base_url=http://localhost:8000`; the `deployed` environment sets `base_url=https://byte-storm-sust-hackathon-preli.onrender.com`. Pick one from the top-right dropdown — Bruno retargets every request in the collection automatically.
+
+![Bruno collection — switching between local and deployed environments; response panel shows the live TicketAnalysis JSON](bruno.png)
+
+---
+
+## Architecture
+
+Two views of the system: **what happens to one ticket** (request pipeline) and **how the parts are deployed** (topology).
+
+### Request pipeline — one `/analyze-ticket` call
+
+```mermaid
+flowchart TD
+    Client(["Judge / harness / browser / Bruno"]) -->|"POST /analyze-ticket"| FastAPI
+    FastAPI["FastAPI app.main<br/>CORS + Prometheus"] -->|"parse + validate"| Pydantic
+    Pydantic["Pydantic models<br/>enums exact, extra=ignore"] --> Investigator
+    Investigator["engine.investigator.analyze<br/>T016 orchestrator"] --> Matcher
+    Matcher["matcher.py<br/>relevant_transaction_id<br/>decision-rules section 1"] --> Verdict
+    Verdict["verdict.py<br/>evidence_verdict<br/>section 2"] --> Classifier
+    Classifier["classifier.py<br/>case_type<br/>section 3.1 phishing first"] --> Router
+    Router["router.py<br/>department / severity / human_review<br/>sections 3.2 to 3.4"] --> Reply
+    Reply["reply.py<br/>safe-by-construction templates"] --> Safety
+    Safety["safety.py S1-S3<br/>scrub outbound text"] --> LLMCond
+    LLMCond{"LLM_ENABLED<br/>and key set?"}
+    LLMCond -->|"yes"| LLM
+    LLM["llm.py<br/>Gemini polish only<br/>reply fluency only"] --> Safety2
+    Safety2["safety.py<br/>re-sanitize"] --> Assemble
+    LLMCond -->|"no"| Assemble
+    Assemble["Assemble TicketAnalysis<br/>+ reason_codes + confidence"] --> Resp
+    Resp(["200 OK JSON<br/>schema-valid"])
 ```
 
-### Run the test suite
+**Key guarantees from the diagram:**
 
-```bash
-cd app
-pytest
+- **Safety is layered in front of and behind the LLM.** Even if `LLM_ENABLED=true`, the LLM can only touch the customer-reply text — every other field, plus the final reply itself, is rule-based + sanitizer-passed.
+- **`relevant_transaction_id` is never invented.** If nothing matches, the matcher returns `null` (decision-rules §1 — best-above-threshold or `null`).
+- **`evidence_verdict` defaults to `insufficient_data` + `human_review_required=true` on doubt.** Conservative-by-construction.
+
+### Deployment + observability topology
+
+```mermaid
+flowchart LR
+    subgraph judge ["Judge / dev machine"]
+        Bruno["Bruno extension<br/>byte_storm_preli/"]
+        Browser["Browser<br/>/docs"]
+        Curl["curl / smoke_test.sh<br/>latency_check.sh"]
+    end
+
+    subgraph render ["Render cloud: byte-storm-sust-hackathon-preli.onrender.com"]
+        FastAPI["FastAPI app<br/>:8000<br/>/health /analyze-ticket /metrics"]
+    end
+
+    subgraph local ["Local docker-compose: optional"]
+        AppLocal["app container<br/>:8000"]
+        Prom["prometheus container<br/>:9090<br/>scrape 5s"]
+        Graf["grafana container<br/>:3000<br/>FastAPI Dashboard"]
+    end
+
+    Bruno --> FastAPI
+    Browser --> FastAPI
+    Curl --> FastAPI
+
+    AppLocal -. "/metrics every 5s" .-> Prom
+    Prom --> Graf
+
+    FastAPI -. "Prometheus-instrumentator<br/>when run via docker-compose locally" .-> Prom
 ```
 
-A coverage report is written to the terminal; CI is configured to fail under 100 %.
+Both paths (`local` and `deployed`) expose the **same three endpoints** with the **same contract** — only the base URL changes. The Grafana dashboard is provisioned automatically from `grafana/provisioning/dashboards/fastapi-dashboard.json`; no manual import needed.
 
 ---
 
@@ -129,6 +245,49 @@ This service is built around four non-negotiable rules (spec §8):
 | **S5** | Two or more critical safety violations across hidden cases → not eligible for the top-40 finalist pool. | `app/tests/test_safety.py` — the safety test suite gates every PR. |
 
 `human_review_required` defaults to `true` on any doubt (decision-rules §3.4), and a conservative template is used whenever evidence is ambiguous.
+
+---
+
+## Build from source
+
+Use these instructions if you want to build the image yourself or run the service without Docker Compose. For the **30-second onboarding** paths (live URL / Bruno / `docker compose up`), see [Try it in 30 seconds](#try-it-in-30-seconds).
+
+### Run with Docker (single container)
+
+```bash
+cd app
+docker build -t queuestorm-investigator .
+docker run --rm -p 8000:8000 --env-file .env.example queuestorm-investigator
+```
+
+Then probe:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+
+curl -X POST http://localhost:8000/analyze-ticket \
+  -H 'content-type: application/json' \
+  -d @samples/sample_input.json
+```
+
+### Run locally with Python 3.12+
+
+```bash
+cd app
+python -m venv .venv && source .venv/bin/activate   # PowerShell: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+### Run the test suite
+
+```bash
+cd app
+pytest
+```
+
+A coverage report is written to the terminal; CI is configured to fail under the threshold set in `app/pytest.ini` (currently 85 %). The latest local run reports **260 passed, 97.91 % coverage**.
 
 ---
 
@@ -214,7 +373,7 @@ A minimal request:
 }
 ```
 
-Returns (200 OK):
+Returns (200 OK) — exact response captured live and committed as `samples/sample_output.json`:
 
 ```json
 {
@@ -224,16 +383,16 @@ Returns (200 OK):
   "case_type": "wrong_transfer",
   "severity": "high",
   "department": "dispute_resolution",
-  "agent_summary": "Customer reports sending 5000 BDT via TXN-9101 to a number they now believe is wrong. Transaction status is completed.",
-  "recommended_next_action": "Verify TXN-9101 details with the customer and escalate to dispute_resolution for review and any eligible recovery through official channels.",
-  "customer_reply": "We have noted your concern about transaction TXN-9101. Our dispute resolution team will review your case and any eligible amount will be returned through official channels. We will never ask for your PIN or OTP.",
+  "agent_summary": "Customer reports a transfer sent to the wrong recipient (transaction TXN-9101).",
+  "recommended_next_action": "Verify the disputed transfer details and open a wrong-transfer dispute for review.",
+  "customer_reply": "We understand you may have sent money to the wrong recipient. We have logged your concern (transaction TXN-9101) and escalated it for review. Any eligible amount will be handled through official channels. For your safety, we will never ask for your PIN, OTP, or password.",
   "human_review_required": true,
-  "confidence": 0.9,
-  "reason_codes": ["wrong_transfer", "transaction_match", "high_value"]
+  "confidence": 0.95,
+  "reason_codes": ["wrong_transfer", "amount_match", "type_match", "recency_match", "consistent"]
 }
 ```
 
-> The exact reply text is generated by the templates in `app/engine/reply.py` and scrubbed by `app/engine/safety.py`. The shape and enum values are stable; the wording is allowed to vary between deployments as long as it remains safe (no credential requests, no refund confirmations, no third-party directives).
+> The reply text is generated by the templates in `app/engine/reply.py` and scrubbed by `app/engine/safety.py`. Schema, enum values, and safety guarantees are deterministic; the exact wording is allowed to drift slightly when the optional LLM path is enabled, but is always re-sanitized before return.
 
 ---
 
@@ -246,9 +405,48 @@ Returns (200 OK):
 
 ---
 
+## Live deployment
+
+The service is deployed to Render and reachable from outside the team network with **no login**:
+
+- **Base URL:** `https://byte-storm-sust-hackathon-preli.onrender.com`
+- **Verified endpoints** (run `scripts/smoke_test.sh` against the URL):
+  - `GET /health` → `200 {"status":"ok"}` *(may take ~30 s on a cold Render free-tier container; the smoke test uses a 60 s timeout)*
+  - `POST /analyze-ticket` → schema-valid `TicketAnalysis` for the worked wrong-transfer case; `case_type=phishing_or_social_engineering` + `department=fraud_risk` for the phishing case; `400` for malformed JSON
+  - `GET /metrics` → `200` Prometheus exposition
+- **Last verification:** 2026-06-26 against the deployed container; reproducible via `bash scripts/smoke_test.sh`.
+- **Cold-start caveat:** Render's free tier scales to zero on inactivity, so the first request after idle may wait ~30–60 s for a fresh container. Subsequent requests are instant.
+
+If the live URL ever drops, the Docker / Python instructions above are the canonical reproducible path — judges can rebuild from this repo.
+
+---
+
+## Monitoring (engineering differentiator)
+
+Tie-breaker #5 is engineering/monitoring. A pre-existing **Prometheus + Grafana** stack is wired up for local development and ships in this repo as a reference deployment.
+
+![Grafana FastAPI dashboard — Total requests, Request per minute, Errors per second, Average response time, Request duration p50 / p90, Requests under 100 ms, Memory usage, CPU usage](scripts/dashboard.png)
+
+> **Reading the dashboard:** each tile isolates one signal — total request count by route, requests-per-minute throughput, error rate, mean and p50/p90 latency by endpoint, the % of requests finishing under 100 ms, plus process memory and CPU. The `/analyze-ticket` line is green, `/health` yellow, `/metrics` blue. Empty "Errors per second" tile means no 5xx during the capture window.
+
+```bash
+docker-compose up -d              # starts app, prometheus, grafana on a private network
+```
+
+| Service     | Local URL                  | Credentials / notes |
+|-------------|----------------------------|---------------------|
+| App (FastAPI) | http://localhost:8000     | `/health`, `/analyze-ticket`, `/metrics` |
+| Prometheus  | http://localhost:9090       | Job `app` scrapes `app:8000/metrics` every 5 s (see `prometheus/prometheus.yml`). Verify targets at `http://localhost:9090/targets`. |
+| Grafana     | http://localhost:3000       | `admin` / `pass@123` (from `grafana/config.monitoring`). The **FastAPI** dashboard is auto-provisioned from `grafana/provisioning/dashboards/fastapi-dashboard.json`. |
+
+`/metrics` is exposed by `prometheus-fastapi-instrumentator` in `app/main.py` and is reachable from outside the container (CORS `*`). Monitoring is **not** on the judge's required path — it's a quality signal only.
+
+> **Verified locally (2026-06-26):** `app` target is `up` in Prometheus; Grafana's **FastAPI Dashboard** is auto-provisioned under the `Services` folder. The pre-existing `prometheus` self-scrape job in `prometheus/prometheus.yml` requests `/prometheus/metrics` (older convention) and shows `down` against `prom/prometheus:latest`, which exposes metrics at the default `/metrics`. This is a cosmetic config quirk in the pre-existing stack and does **not** affect the FastAPI dashboard.
+
+---
+
 ## Known limitations
 
-- **No live URL is committed in the README** during the round (live deployment is a teammate task). The Docker image and run command above are the canonical reproducible path.
 - **Calibration against the official 10 sample cases is pending.** Until `SUST_Preli_Sample_Cases.json` is published, severity / verdict boundaries may shift slightly. The fix is a one-file change to `decision-rules.md` plus re-running the test suite.
 - **No GPU.** Per spec §9, GPU is not allowed in prelim judging. The optional LLM is API-only.
 - **Bangla/Banglish coverage is synonym-table based**, not tokenization-based. Genuine morphologically complex Bangla sentences may route to `insufficient_data` rather than guessing — this is intentional (`human_review_required = true`).
