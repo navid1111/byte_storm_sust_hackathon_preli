@@ -32,6 +32,27 @@ See `specs/001-queuestorm-investigator/spec.md` for the full contract.
 
 ## Quick start
 
+### Live deployment
+
+The service is live on Render at:
+
+```
+https://byte-storm-sust-hackathon-preli.onrender.com
+```
+
+Probe it directly:
+
+```bash
+curl https://byte-storm-sust-hackathon-preli.onrender.com/health
+# {"status":"ok"}
+
+curl -X POST https://byte-storm-sust-hackathon-preli.onrender.com/analyze-ticket \
+  -H 'Content-Type: application/json' \
+  -d @samples/sample_input.json
+```
+
+> Even with a live URL, this README + the Docker run command below serve as the **reproducible runbook** so judges can redeploy if the live endpoint is down (problem statement §10).
+
 ### Run with Docker (recommended for judges)
 
 ```bash
@@ -248,7 +269,7 @@ Returns (200 OK):
 
 ## Known limitations
 
-- **No live URL is committed in the README** during the round (live deployment is a teammate task). The Docker image and run command above are the canonical reproducible path.
+- **No live URL is committed in the README** during the round — the deployed URL above is the team's own Render endpoint. The Docker image and run command are the canonical reproducible path if the live endpoint is unavailable during judging.
 - **Verified against official sample cases.** All 10 cases from the official `SUST_Preli_Sample_Cases.json` are executed as part of the validation pipeline and achieve 100% field agreement.
 - **No GPU.** Per spec §9, GPU is not allowed in prelim judging. The optional LLM is API-only.
 - **Bangla/Banglish coverage is synonym-table based**, not tokenization-based. Genuine morphologically complex Bangla sentences may route to `insufficient_data` rather than guessing — this is intentional (`human_review_required = true`).
