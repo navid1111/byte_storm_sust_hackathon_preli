@@ -1,0 +1,45 @@
+# Secrets / environment — NEVER bake secrets into the image
+.env
+.env.*
+*.env
+!.env.example
+
+# VCS / CI
+.git
+.gitignore
+.gitattributes
+.github/
+
+# Tests, coverage, caches — not needed at runtime
+tests/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+.tox/
+
+# Python artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtualenvs / editors / OS junk
+.venv/
+venv/
+env/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / runtime artefacts
+*.log
+logs/
+.pids/

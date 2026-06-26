@@ -31,14 +31,17 @@ def register_error_handlers(app: FastAPI) -> None:
                 or err_type == "json_invalid"
                 or (len(loc) > 1 and loc[0] == "body" and isinstance(loc[1], int))
             )
-            if is_body_level:
+            # A missing required field is malformed input → 400 (spec §4.1:
+            # "400 = invalid JSON, missing required fields").
+            is_missing_field = err_type == "missing"
+            if is_body_level or is_missing_field:
                 return JSONResponse(
                     status_code=HTTP_400_BAD_REQUEST,
-                    content={"detail": "Malformed JSON or invalid body structure."}
+                    content={"detail": "Malformed input: invalid JSON or missing required field."}
                 )
-        
-        # Field-level errors (missing required fields, or semantic/value validation
-        # like empty complaint strings) return 422.
+
+        # Remaining errors are schema-valid but semantically invalid (e.g. an
+        # empty/whitespace complaint) → 422 (spec §4.1).
         return JSONResponse(
             status_code=HTTP_422_UNPROCESSABLE_ENTITY,
             content={"detail": jsonable_encoder(errors)}
