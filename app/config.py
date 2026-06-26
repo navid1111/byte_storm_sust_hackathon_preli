@@ -24,9 +24,12 @@ class Settings:
     """Runtime configuration read once from the environment."""
 
     def __init__(self) -> None:
-        # Optional LLM layer — OFF by default. The deterministic rule engine is
-        # the product; the LLM is a fail-safe enhancement (plan.md D4).
-        self.llm_enabled: bool = _as_bool(os.getenv("LLM_ENABLED"), default=False)
+        # Optional LLM layer. It auto-activates when a GEMINI_API_KEY is present
+        # (so deploying only needs that one secret env var, e.g. on Render), and
+        # stays off otherwise — the deterministic rule engine is the product and
+        # the LLM is a fail-safe enhancement (plan.md D4). Set LLM_ENABLED=false
+        # to force it off even when a key is configured.
+        self.llm_enabled: bool = _as_bool(os.getenv("LLM_ENABLED"), default=True)
         self.llm_provider: str = os.getenv("LLM_PROVIDER", "gemini")
         self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
         self.model_name: str = os.getenv("MODEL_NAME", "gemini-2.0-flash")
@@ -39,7 +42,11 @@ class Settings:
 
     @property
     def llm_ready(self) -> bool:
-        """True only when the LLM layer is both enabled and has a key."""
+        """True when a key is configured and the layer isn't explicitly disabled.
+
+        Effectively: presence of GEMINI_API_KEY turns the LLM on. No key → off
+        (safe rule-based fallback), so the default deployment needs no secrets.
+        """
         return self.llm_enabled and bool(self.gemini_api_key)
 
 
