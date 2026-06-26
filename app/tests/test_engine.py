@@ -62,24 +62,28 @@ def test_match_picks_best_of_multiple():
 
 
 def test_verdict_consistent_for_matched_transfer():
-    r = matcher.match("sent 5000 to wrong number", [WRONG_TRANSFER_TXN])
-    assert verdict.decide("sent 5000 to wrong number", r) == EvidenceVerdict.CONSISTENT
+    history = [WRONG_TRANSFER_TXN]
+    r = matcher.match("sent 5000 to wrong number", history)
+    assert verdict.decide("sent 5000 to wrong number", r, history) == EvidenceVerdict.CONSISTENT
 
 
 def test_verdict_inconsistent_when_completed_but_claims_failure():
-    r = matcher.match("my 5000 payment failed but money deducted", [WRONG_TRANSFER_TXN])
-    assert verdict.decide("my 5000 payment failed but money deducted", r) == EvidenceVerdict.INCONSISTENT
+    history = [WRONG_TRANSFER_TXN]
+    r = matcher.match("my 5000 payment failed but money deducted", history)
+    assert verdict.decide("my 5000 payment failed but money deducted", r, history) == EvidenceVerdict.INCONSISTENT
 
 
 def test_verdict_consistent_when_failed_status_matches_claim():
     failed = _txn(transaction_id="TXN-2", type="payment", amount=300, status="failed")
-    r = matcher.match("payment of 300 failed", [failed])
-    assert verdict.decide("payment of 300 failed", r) == EvidenceVerdict.CONSISTENT
+    history = [failed]
+    r = matcher.match("payment of 300 failed", history)
+    assert verdict.decide("payment of 300 failed", r, history) == EvidenceVerdict.CONSISTENT
 
 
 def test_verdict_insufficient_when_no_match():
-    r = matcher.match("hello there", [])
-    assert verdict.decide("hello there", r) == EvidenceVerdict.INSUFFICIENT_DATA
+    history = []
+    r = matcher.match("hello there", history)
+    assert verdict.decide("hello there", r, history) == EvidenceVerdict.INSUFFICIENT_DATA
 
 
 # --- classifier (decision-rules §3.1, §5) -----------------------------------
@@ -158,9 +162,11 @@ def test_department_map_and_refund_escalation():
 
 def test_human_review_rules():
     assert router.human_review_required(CaseType.PHISHING_OR_SOCIAL_ENGINEERING, Severity.CRITICAL, EvidenceVerdict.INSUFFICIENT_DATA, None, None) is True
-    assert router.human_review_required(CaseType.OTHER, Severity.LOW, EvidenceVerdict.INSUFFICIENT_DATA, None, None) is True
+    assert router.human_review_required(CaseType.OTHER, Severity.LOW, EvidenceVerdict.INSUFFICIENT_DATA, None, None) is False
     assert router.human_review_required(CaseType.REFUND_REQUEST, Severity.LOW, EvidenceVerdict.CONSISTENT, 100, "customer") is False
-    assert router.human_review_required(CaseType.MERCHANT_SETTLEMENT_DELAY, Severity.MEDIUM, EvidenceVerdict.CONSISTENT, 500, "merchant") is True
+    assert router.human_review_required(CaseType.MERCHANT_SETTLEMENT_DELAY, Severity.MEDIUM, EvidenceVerdict.CONSISTENT, 500, "merchant") is False
+    assert router.human_review_required(CaseType.WRONG_TRANSFER, Severity.HIGH, EvidenceVerdict.CONSISTENT, 5000, "customer", relevant_transaction_id="TXN-1") is True
+    assert router.human_review_required(CaseType.WRONG_TRANSFER, Severity.MEDIUM, EvidenceVerdict.INSUFFICIENT_DATA, None, "customer", relevant_transaction_id=None) is False
 
 
 # --- reply (safe by construction, spec §8) ----------------------------------
@@ -219,7 +225,7 @@ def test_investigator_empty_history_insufficient():
     out = analyze(ticket)
     assert out.relevant_transaction_id is None
     assert out.evidence_verdict == EvidenceVerdict.INSUFFICIENT_DATA
-    assert out.human_review_required is True
+    assert out.human_review_required is False
 
 
 def test_investigator_bangla_refund():

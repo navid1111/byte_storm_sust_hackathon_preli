@@ -38,7 +38,18 @@ def classify(complaint: str, match: MatchResult, history, user_type: str | None)
         return CaseType.DUPLICATE_PAYMENT
 
     # 3. Wrong transfer.
-    if lexicon.contains_any(norm, lexicon.WRONG_NUMBER_CUES):
+    if (
+        lexicon.contains_any(norm, lexicon.WRONG_NUMBER_CUES)
+        or (
+            lexicon.contains_any(norm, lexicon.TRANSFER_CUES)
+            and (
+                lexicon.contains_any(norm, ["brother", "friend", "sister", "mother", "father", "he says"])
+                or lexicon.contains_any(norm, lexicon.NOT_RECEIVED_CUES)
+                or "didn't get" in norm
+                or "did not get" in norm
+            )
+        )
+    ):
         return CaseType.WRONG_TRANSFER
 
     # 4. Payment failed / deducted but failed.

@@ -37,23 +37,28 @@ def department(case_type: CaseType, severity: Severity) -> Department:
 
 
 def severity(case_type: CaseType, amount: float | None, verdict: EvidenceVerdict) -> Severity:
-    amt = amount or 0.0
     if case_type == CaseType.PHISHING_OR_SOCIAL_ENGINEERING:
         return Severity.CRITICAL
-    if amt >= HIGH_VALUE and verdict == EvidenceVerdict.CONSISTENT:
-        return Severity.CRITICAL
-    if case_type in {CaseType.WRONG_TRANSFER, CaseType.PAYMENT_FAILED}:
-        return Severity.HIGH
+        
+    amt = amount or 0.0
     if amt >= HIGH_VALUE:
-        return Severity.HIGH
+        return Severity.CRITICAL if verdict == EvidenceVerdict.CONSISTENT else Severity.HIGH
+
+    if case_type == CaseType.WRONG_TRANSFER:
+        return Severity.HIGH if verdict == EvidenceVerdict.CONSISTENT else Severity.MEDIUM
+
     if case_type in {
-        CaseType.DUPLICATE_PAYMENT,
-        CaseType.MERCHANT_SETTLEMENT_DELAY,
+        CaseType.PAYMENT_FAILED,
         CaseType.AGENT_CASH_IN_ISSUE,
+        CaseType.DUPLICATE_PAYMENT,
     }:
+        return Severity.HIGH
+
+    if case_type in {
+        CaseType.MERCHANT_SETTLEMENT_DELAY,
+    } or amt >= MID_VALUE:
         return Severity.MEDIUM
-    if amt >= MID_VALUE:
-        return Severity.MEDIUM
+
     return Severity.LOW
 
 
@@ -63,24 +68,26 @@ def human_review_required(
     verdict: EvidenceVerdict,
     amount: float | None,
     user_type: str | None,
+    relevant_transaction_id: str | None = None,
 ) -> bool:
+    # Phishing always requires human review
     if case_type == CaseType.PHISHING_OR_SOCIAL_ENGINEERING:
         return True
-    if verdict in {EvidenceVerdict.INCONSISTENT, EvidenceVerdict.INSUFFICIENT_DATA}:
+        
+    # Inconsistent verdicts always require human review (contradiction)
+    if verdict == EvidenceVerdict.INCONSISTENT:
         return True
-    if severity in {Severity.HIGH, Severity.CRITICAL}:
+        
+    # Wrong transfer only requires review if a transaction was actually matched
+    if case_type == CaseType.WRONG_TRANSFER:
+        return relevant_transaction_id is not None
+        
+    # Duplicate payments and Agent cash-in issues always require review
+    if case_type in {CaseType.DUPLICATE_PAYMENT, CaseType.AGENT_CASH_IN_ISSUE}:
         return True
-    if case_type in {
-        CaseType.WRONG_TRANSFER,
-        CaseType.DUPLICATE_PAYMENT,
-        CaseType.PAYMENT_FAILED,
-    }:
-        return True
+        
+    # Any high-value transaction (>= 25,000 BDT) requires review
     if (amount or 0.0) >= HIGH_VALUE:
         return True
-    if case_type in {
-        CaseType.MERCHANT_SETTLEMENT_DELAY,
-        CaseType.AGENT_CASH_IN_ISSUE,
-    }:
-        return True
+        
     return False

@@ -23,7 +23,7 @@ def analyze(ticket: TicketRequest) -> TicketAnalysis:
     match_result = matcher.match(ticket.complaint, history)
 
     # 3. Evidence verdict.
-    evidence_verdict = verdict.decide(ticket.complaint, match_result)
+    evidence_verdict = verdict.decide(ticket.complaint, match_result, history)
 
     # 4. Case type.
     case_type = classifier.classify(
@@ -35,7 +35,8 @@ def analyze(ticket: TicketRequest) -> TicketAnalysis:
     severity = router.severity(case_type, amount, evidence_verdict)
     department = router.department(case_type, severity)
     human_review = router.human_review_required(
-        case_type, severity, evidence_verdict, amount, ticket.user_type
+        case_type, severity, evidence_verdict, amount, ticket.user_type,
+        relevant_transaction_id=match_result.transaction_id
     )
 
     # 6. Draft safe agent + customer text.

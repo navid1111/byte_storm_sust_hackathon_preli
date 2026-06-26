@@ -1,0 +1,20 @@
+{
+  "ticket_id": "TKT-DEMO-1",
+  "relevant_transaction_id": "TXN-9101",
+  "evidence_verdict": "consistent",
+  "case_type": "wrong_transfer",
+  "severity": "high",
+  "department": "dispute_resolution",
+  "agent_summary": "Customer reports a transfer sent to the wrong recipient (transaction TXN-9101).",
+  "recommended_next_action": "Verify the disputed transfer details and open a wrong-transfer dispute for review.",
+  "customer_reply": "We understand you may have sent money to the wrong recipient. We have logged your concern (transaction TXN-9101) and escalated it for review. Any eligible amount will be handled through official channels. For your safety, we will never ask for your PIN, OTP, or password.",
+  "human_review_required": true,
+  "confidence": 0.95,
+  "reason_codes": [
+    "wrong_transfer",
+    "amount_match",
+    "type_match",
+    "recency_match",
+    "consistent"
+  ]
+}

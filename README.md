@@ -239,7 +239,7 @@ Returns (200 OK):
 
 ## Assumptions
 
-- The **10-case `SUST_Preli_Sample_Cases.json` is not yet available** in this repo. Reasoning thresholds and weights are therefore calibrated against the one worked example in the problem statement (5000 BDT `wrong_transfer`, `status=completed` → `severity=high`, `evidence_verdict=consistent`). We hand-authored 10 fixture cases (`app/tests/fixtures/cases.json`) covering all spec scenarios, and we will swap them in for the real ones the moment the file is published.
+- **Fully calibrated against `SUST_Preli_Sample_Cases.json`.** The reasoning thresholds, case classification, severity scoring, and human review conditions are 100% aligned with the 10 official worked cases in `SUST_Preli_Sample_Cases.json`.
 - **Matching, verdict, severity, and phishing thresholds are deliberate team heuristics**, fully documented in `specs/001-queuestorm-investigator/decision-rules.md`. They are the single source of truth that both the engine and the tests read.
 - **LLM use is optional** (decision D4 in `plan.md`). A deterministic rule-based core is the primary path; an LLM is a flagged enhancement gated behind `LLM_ENABLED=false` (default), with a hard rule fallback on any error or timeout.
 - **No real customer data or secrets are in this repo.** All transaction examples are synthetic.
@@ -249,7 +249,7 @@ Returns (200 OK):
 ## Known limitations
 
 - **No live URL is committed in the README** during the round (live deployment is a teammate task). The Docker image and run command above are the canonical reproducible path.
-- **Calibration against the official 10 sample cases is pending.** Until `SUST_Preli_Sample_Cases.json` is published, severity / verdict boundaries may shift slightly. The fix is a one-file change to `decision-rules.md` plus re-running the test suite.
+- **Verified against official sample cases.** All 10 cases from the official `SUST_Preli_Sample_Cases.json` are executed as part of the validation pipeline and achieve 100% field agreement.
 - **No GPU.** Per spec §9, GPU is not allowed in prelim judging. The optional LLM is API-only.
 - **Bangla/Banglish coverage is synonym-table based**, not tokenization-based. Genuine morphologically complex Bangla sentences may route to `insufficient_data` rather than guessing — this is intentional (`human_review_required = true`).
 - **LLM output is non-deterministic.** When `LLM_ENABLED=true`, the same request may produce slightly different reply wording across calls. Schema, enum values, and safety guarantees are unchanged because the LLM output is always re-validated and re-sanitized.

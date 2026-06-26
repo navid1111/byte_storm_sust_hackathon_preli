@@ -102,8 +102,17 @@ def match(complaint: str, history: list[TransactionEntry]) -> MatchResult:
     # then most recent timestamp, then first in array.
     scored.sort(key=lambda t: (t[0], t[2], t[3], -t[6]), reverse=True)
     best = scored[0]
-    score, strong, _amount_match, _ts, entry, cues, _i = best
+    max_score, strong, _amount_match, _ts, entry, cues, _i = best
 
-    if score >= MATCH_THRESHOLD and strong:
-        return MatchResult(entry.transaction_id, entry, score, cues or ["matched"])
-    return MatchResult(None, None, score, ["no_match"])
+    if max_score >= MATCH_THRESHOLD and strong:
+        # Check for ambiguity: multiple entries with max_score but different counterparties
+        max_score_entries = [
+            item for item in scored 
+            if abs(item[0] - max_score) < 1e-9 and item[1]
+        ]
+        if len(max_score_entries) > 1:
+            counterparties = {item[4].counterparty for item in max_score_entries if item[4].counterparty}
+            if len(counterparties) > 1:
+                return MatchResult(None, None, max_score, ["ambiguous_match"])
+        return MatchResult(entry.transaction_id, entry, max_score, cues or ["matched"])
+    return MatchResult(None, None, max_score, ["no_match"])
