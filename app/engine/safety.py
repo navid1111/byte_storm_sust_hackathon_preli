@@ -11,9 +11,23 @@ from __future__ import annotations
 import re
 
 # S1 credential regexes
+# English + Bangla script + Banglish transliteration variants.
+# Banglish covers common imperative phrasing in mixed-language complaints
+# (e.g. "pin ta den", "otp ta den", "code share korun", "cvv dao",
+# "password bolun"). Adding them here means any code path that runs the
+# sanitizer (customer_reply, recommended_next_action, agent_summary) gets
+# coverage on Banglish injection attempts for free.
 CREDENTIAL_RE = re.compile(
-    r"\b(pin|otp|password|cvv|card\s*number|card\s*no|পিন|ওটিপি|পাসওয়ার্ড)\b",
-    re.IGNORECASE
+    r"\b("
+    r"pin|otp|password|cvv|card\s*number|card\s*no|"
+    r"পিন|ওটিপি|পাসওয়ার্ড|"
+    r"pin\s+ta\s+den|pin\s+ta\s+din|pin\s+den|"
+    r"otp\s+ta\s+den|otp\s+ta\s+din|otp\s+den|"
+    r"code\s+share\s+korun|code\s+share\s+koro|"
+    r"cvv\s+dao|cvv\s+den|"
+    r"password\s+bolun|password\s+dao"
+    r")\b",
+    re.IGNORECASE | re.UNICODE,
 )
 
 # S2 refund confirmations and their authority-safe replacements
@@ -105,6 +119,11 @@ def sanitize_recommended_next_action(text: str) -> str:
     if not text:
         return ""
 
+    # S2: Rewrite unsafe refund/reversal/unblock/recovery promises using the
+    # same authority-safe official-channel language as the customer sanitizer.
+    for pattern, replacement in REFUND_PATTERNS:
+        text = pattern.sub(replacement, text)
+
     # Next action: ensure agent is never told to ask for client credentials
     if CREDENTIAL_RE.search(text):
         text_lower = text.lower()
@@ -121,5 +140,43 @@ def sanitize_recommended_next_action(text: str) -> str:
         text = pattern.sub("", text)
 
     text = URL_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def sanitize_agent_summary(text: str) -> str:
+    """Sanitizes an internal ``agent_summary`` field.
+
+    Applies S1 / S2 / S3 cleanup (same rules as the customer-facing sanitizer)
+    but does NOT append any customer-facing disclaimer or footer — the
+    ``agent_summary`` is internal and must remain concise.
+    """
+    if not text:
+        return ""
+
+    # S2: Rewrite unsafe refund/reversal/unblock/recovery promises.
+    for pattern, replacement in REFUND_PATTERNS:
+        text = pattern.sub(replacement, text)
+
+    # S1: Scrub credential requests unless a "never ask" warning is already
+    # present (preserves legitimate safe text).
+    if CREDENTIAL_RE.search(text):
+        text_lower = text.lower()
+        has_warning = (
+            "never ask" in text_lower
+            or "will not ask" in text_lower
+            or "do not share" in text_lower
+            or "never request" in text_lower
+            or "never share" in text_lower
+        )
+        if not has_warning:
+            text = CREDENTIAL_RE.sub("[redacted]", text)
+
+    # S3: Strip suspicious third-party directives and suspicious URLs.
+    for pattern in S3_PATTERNS:
+        text = pattern.sub("", text)
+    text = URL_RE.sub("", text)
+
+    # Collapse double spaces from replacements; do NOT append any footer.
     text = re.sub(r"\s+", " ", text).strip()
     return text

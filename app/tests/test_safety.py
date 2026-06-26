@@ -20,6 +20,7 @@ import pytest
 
 from engine.investigator import analyze
 from engine.safety import (
+    sanitize_agent_summary,
     sanitize_customer_reply,
     sanitize_recommended_next_action,
 )
@@ -378,3 +379,103 @@ def test_sanitizer_on_recommended_next_action_strips_pin():
     dirty = "Ask the customer for their OTP to verify identity."
     clean = sanitize_recommended_next_action(dirty)
     assert "otp" not in clean.lower() or "never ask" in clean.lower()
+
+
+# ---------------------------------------------------------------------------
+# sanitize_recommended_next_action — S2 refund rewrites
+# ---------------------------------------------------------------------------
+
+def test_sanitizer_recommended_next_action_rewrites_refund_promise():
+    """next_action must not promise a refund; it must be rewritten to the
+    authority-safe 'official channels' wording."""
+    dirty = "We will refund you 5000 taka immediately."
+    clean = sanitize_recommended_next_action(dirty)
+    assert "we will refund you" not in clean.lower()
+    assert "official channels" in clean.lower()
+
+
+# ---------------------------------------------------------------------------
+# Banglish credential phrases (S1) — covered by all three sanitizers
+# ---------------------------------------------------------------------------
+
+BANGLISH_CREDENTIAL_PHRASES = [
+    "pin ta den",
+    "otp ta den",
+    "code share korun",
+    "password bolun",
+    "cvv dao",
+]
+
+
+@pytest.mark.parametrize("phrase", BANGLISH_CREDENTIAL_PHRASES)
+def test_sanitizer_scrubs_banglish_credential_phrase_in_customer_reply(phrase):
+    """Banglish credential asks must not survive sanitize_customer_reply."""
+    dirty = f"Please {phrase} to verify your account."
+    clean = sanitize_customer_reply(dirty)
+    assert phrase not in clean.lower()
+
+
+@pytest.mark.parametrize("phrase", BANGLISH_CREDENTIAL_PHRASES)
+def test_sanitizer_scrubs_banglish_credential_phrase_in_recommended_next_action(phrase):
+    """Banglish credential asks must not survive sanitize_recommended_next_action."""
+    dirty = f"Ask the customer to {phrase} for verification."
+    clean = sanitize_recommended_next_action(dirty)
+    assert phrase not in clean.lower()
+
+
+@pytest.mark.parametrize("phrase", BANGLISH_CREDENTIAL_PHRASES)
+def test_sanitizer_scrubs_banglish_credential_phrase_in_agent_summary(phrase):
+    """Banglish credential asks must not survive sanitize_agent_summary either."""
+    dirty = f"Customer was asked to {phrase} during the call."
+    clean = sanitize_agent_summary(dirty)
+    assert phrase not in clean.lower()
+
+
+# ---------------------------------------------------------------------------
+# sanitize_agent_summary — applies S1/S2/S3 but does NOT append a customer footer
+# ---------------------------------------------------------------------------
+
+def test_sanitizer_agent_summary_strips_pin_request_without_appending_footer():
+    """A dirty agent_summary must be cleaned but must NOT pick up any
+    customer-facing footer / security note. agent_summary is internal."""
+    dirty = "Customer shared their PIN during the call: 1234."
+    clean = sanitize_agent_summary(dirty)
+    # PIN phrase removed (or kept only inside a 'never ask' warning, which we
+    # do not auto-add here — internal field).
+    assert "pin" not in clean.lower() or "never ask" in clean.lower()
+    # No customer-facing footer text should appear in an internal field.
+    forbidden_footers = [
+        "for your safety",
+        "we will never ask for your pin",
+        "official bkash app or helpline",
+    ]
+    for footer in forbidden_footers:
+        assert footer not in clean.lower(), (
+            f"agent_summary must not carry customer footer '{footer}': {clean!r}"
+        )
+
+
+def test_sanitizer_agent_summary_rewrites_refund_confirmation():
+    """An unsafe refund confirmation in agent_summary is rewritten to the
+    authority-safe wording — but no footer is added."""
+    dirty = "We have refunded the customer 5000 taka."
+    clean = sanitize_agent_summary(dirty)
+    assert "we have refunded" not in clean.lower()
+    assert "official channels" in clean.lower()
+    # Still no customer-facing footer.
+    assert "for your safety" not in clean.lower()
+
+
+def test_sanitizer_agent_summary_strips_suspicious_url():
+    """Suspicious URLs in agent_summary are stripped; no footer added."""
+    dirty = "Customer was directed to http://sketchy-site.example for verification."
+    clean = sanitize_agent_summary(dirty)
+    assert "sketchy-site" not in clean.lower()
+    assert "for your safety" not in clean.lower()
+
+
+def test_sanitizer_agent_summary_preserves_safe_text_verbatim():
+    """A safe internal summary must pass through untouched (no footer added)."""
+    safe = "Customer reports a duplicate charge of 850 taka to MERCHANT-09."
+    clean = sanitize_agent_summary(safe)
+    assert clean == safe
